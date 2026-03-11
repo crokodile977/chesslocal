@@ -1,0 +1,1006 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chess Multiplayer</title>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Crimson+Text:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --light-sq:#e8d5b0; --dark-sq:#8b5e3c;
+    --selected:#f6f669cc; --move-dot:rgba(0,0,0,0.22);
+    --capture-ring:rgba(180,0,0,0.38);
+    --bg:#1a1008; --panel:#2a1a0e;
+    --gold:#c9a44a; --gold2:#e8c87a; --text:#f0e0c0;
+    --sq:72px;
+  }
+  body {
+    background:var(--bg); min-height:100vh;
+    display:flex; align-items:center; justify-content:center;
+    font-family:'Crimson Text',serif; color:var(--text); padding:20px; overflow-x:hidden;
+  }
+  body::before {
+    content:''; position:fixed; inset:0;
+    background:radial-gradient(ellipse at 30% 20%,#3a1f0820 0%,transparent 60%),
+               radial-gradient(ellipse at 70% 80%,#1a0a0420 0%,transparent 60%);
+    pointer-events:none;
+  }
+
+  #waiting { display:none; }
+  #game    { display:none; }
+
+  /* ── LOBBY ── */
+  #lobby {
+    display:flex; flex-direction:column; align-items:center; gap:28px;
+    animation:containerFadeIn .7s ease both;
+    max-width:420px; width:100%;
+  }
+  #lobby h1 { font-family:'Cinzel',serif; font-size:2.4rem; letter-spacing:.18em; color:var(--gold); text-shadow:0 0 40px #c9a44a55; animation:titleGlow 3s ease-in-out infinite alternate; }
+  @keyframes titleGlow { from{text-shadow:0 0 20px #c9a44a44} to{text-shadow:0 0 40px #c9a44a99,0 0 80px #c9a44a33} }
+
+  .lobby-card {
+    background:var(--panel); border:1px solid #c9a44a44;
+    border-radius:10px; padding:30px 32px; width:100%;
+    box-shadow:0 4px 40px #00000066;
+  }
+  .lobby-card h2 { font-family:'Cinzel',serif; color:var(--gold); font-size:1rem; letter-spacing:.14em; margin-bottom:20px; opacity:.8; }
+  .field { display:flex; flex-direction:column; gap:6px; margin-bottom:16px; }
+  .field label { font-family:'Cinzel',serif; font-size:.68rem; letter-spacing:.1em; color:var(--gold); opacity:.65; }
+  .field input {
+    background:#110800; border:1px solid #c9a44a44; border-radius:4px;
+    color:var(--text); font-family:'Crimson Text',serif; font-size:1rem;
+    padding:10px 14px; outline:none; transition:border-color .2s;
+  }
+  .field input:focus { border-color:var(--gold); }
+  .btn-row { display:flex; gap:10px; margin-top:20px; }
+  .lobby-btn {
+    font-family:'Cinzel',serif; font-size:.78rem; letter-spacing:.12em;
+    background:transparent; border:1px solid var(--gold); color:var(--gold);
+    padding:11px 18px; cursor:pointer; border-radius:4px;
+    transition:all .2s, transform .12s; flex:1;
+  }
+  .lobby-btn:hover { background:var(--gold); color:#1a1008; transform:scale(1.03); }
+  .lobby-btn:active { transform:scale(.97); }
+  .lobby-btn.primary { background:var(--gold); color:#1a1008; }
+  .lobby-btn.primary:hover { background:var(--gold2); }
+  .divider { border:none; border-top:1px solid #c9a44a22; margin:16px 0; }
+  .conn-status { font-size:.85rem; text-align:center; color:#c8a87a; min-height:20px; }
+  .conn-status.err { color:#ff7b50; }
+  .conn-status.ok  { color:#7ec87e; }
+
+  /* waiting room */
+  #waiting {
+    display:none; flex-direction:column; align-items:center; gap:22px;
+    animation:containerFadeIn .5s ease both;
+  }
+  #waiting h2 { font-family:'Cinzel',serif; color:var(--gold); font-size:1.5rem; letter-spacing:.14em; }
+  .room-url-box {
+    background:#110800; border:1px solid #c9a44a44; border-radius:6px;
+    padding:14px 18px; text-align:center; width:100%;
+  }
+  .room-url-label { font-family:'Cinzel',serif; font-size:.65rem; letter-spacing:.1em; color:var(--gold); opacity:.6; margin-bottom:6px; }
+  .room-url { font-size:.85rem; color:var(--gold2); word-break:break-all; cursor:pointer; }
+  .room-url:hover { text-decoration:underline; }
+  .waiting-anim { font-size:3rem; animation:waitPulse 1.2s ease-in-out infinite alternate; }
+  @keyframes waitPulse { from{opacity:.3;transform:scale(.9)} to{opacity:1;transform:scale(1.1)} }
+  .wait-msg { color:#c8a87a; font-size:1rem; text-align:center; }
+  .role-badge {
+    font-family:'Cinzel',serif; font-size:.8rem; letter-spacing:.12em;
+    background:#110800; border:1px solid #c9a44a44; border-radius:20px;
+    padding:6px 18px; color:var(--gold2);
+  }
+
+  /* ── GAME ── */
+  #game { display:none; }
+  .container {
+    display:flex; gap:32px; align-items:flex-start;
+    flex-wrap:wrap; justify-content:center;
+    animation:containerFadeIn .7s ease both;
+  }
+  @keyframes containerFadeIn { from{opacity:0;transform:translateY(24px)} to{opacity:1;transform:translateY(0)} }
+
+  h1.game-title {
+    font-family:'Cinzel',serif; font-size:2rem; letter-spacing:.18em;
+    color:var(--gold); text-align:center; margin-bottom:18px;
+    animation:titleGlow 3s ease-in-out infinite alternate;
+  }
+  .board-wrap { display:flex; flex-direction:column; align-items:center; }
+  .coords-row { display:flex; width:calc(var(--sq)*8); justify-content:space-around; padding:0 0 4px; }
+  .coords-col { display:flex; flex-direction:column; height:calc(var(--sq)*8); justify-content:space-around; padding-right:6px; align-items:flex-end; }
+  .coord { font-family:'Cinzel',serif; font-size:.72rem; color:var(--gold); opacity:.65; width:16px; text-align:center; }
+  .board-row { display:flex; }
+  #board {
+    border:3px solid var(--gold);
+    box-shadow:0 0 40px #c9a44a30,0 8px 60px #00000088;
+    position:relative; animation:boardReveal .6s cubic-bezier(.22,1,.36,1) .1s both;
+  }
+  @keyframes boardReveal { from{opacity:0;transform:scale(.94) rotateX(8deg)} to{opacity:1;transform:scale(1) rotateX(0)} }
+
+  .sq {
+    width:var(--sq); height:var(--sq);
+    display:flex; align-items:center; justify-content:center;
+    position:relative; cursor:pointer; user-select:none; overflow:hidden;
+  }
+  .sq.light{background:var(--light-sq);} .sq.dark{background:var(--dark-sq);}
+  .sq.selected{background:var(--selected) !important;} .sq.last-move{filter:brightness(1.18);}
+  .sq::after {
+    content:''; position:absolute; inset:0;
+    background:radial-gradient(circle at var(--mx,50%) var(--my,50%),rgba(255,255,255,.18) 0%,transparent 70%);
+    opacity:0; transition:opacity .25s; pointer-events:none; z-index:0;
+  }
+  .sq:hover::after{opacity:1;}
+  .sq.locked { cursor:default; }
+  .sq.locked:hover::after { opacity:0; }
+
+  .sq .piece {
+    font-size:calc(var(--sq)*.78); line-height:1;
+    position:relative; z-index:2; pointer-events:none;
+    filter:drop-shadow(0 2px 4px rgba(0,0,0,.5));
+    transition:transform .12s cubic-bezier(.34,1.56,.64,1),filter .15s;
+    will-change:transform;
+  }
+  .sq .piece.piece-enter{animation:pieceEnter .22s cubic-bezier(.34,1.56,.64,1) both;}
+  @keyframes pieceEnter{from{opacity:0;transform:scale(.4) translateY(-8px)}to{opacity:1;transform:scale(1) translateY(0)}}
+  .sq.selected .piece{animation:pieceBounce .35s cubic-bezier(.34,1.7,.64,1) both;filter:drop-shadow(0 4px 12px rgba(0,0,0,.7)) drop-shadow(0 0 8px #f6f66966);}
+  @keyframes pieceBounce{0%{transform:scale(1) translateY(0)}40%{transform:scale(1.18) translateY(-6px)}70%{transform:scale(1.08) translateY(-2px)}100%{transform:scale(1.12) translateY(-3px)}}
+  .piece-capture{position:absolute;font-size:calc(var(--sq)*.78);line-height:1;pointer-events:none;z-index:20;animation:captureBurst .45s cubic-bezier(.22,1,.36,1) forwards;}
+  @keyframes captureBurst{0%{opacity:1;transform:scale(1) rotate(0) translateY(0)}60%{opacity:.6;transform:scale(1.4) rotate(15deg) translateY(-10px)}100%{opacity:0;transform:scale(.2) rotate(40deg) translateY(-20px)}}
+  .piece-flying{position:fixed;pointer-events:none;z-index:999;font-size:calc(var(--sq)*.78);line-height:1;filter:drop-shadow(0 8px 20px rgba(0,0,0,.7)) drop-shadow(0 0 10px #c9a44a55);display:flex;align-items:center;justify-content:center;transition:left var(--fly-dur,.28s) cubic-bezier(.4,0,.2,1),top var(--fly-dur,.28s) cubic-bezier(.4,0,.2,1);transform:scale(1.15);will-change:left,top;}
+  .hint-dot{position:absolute;width:34%;height:34%;background:var(--move-dot);border-radius:50%;z-index:1;pointer-events:none;animation:hintAppear .18s cubic-bezier(.34,1.56,.64,1) both;}
+  @keyframes hintAppear{from{transform:scale(0);opacity:0}to{transform:scale(1);opacity:1}}
+  .hint-ring{position:absolute;inset:0;border-radius:50%;box-shadow:inset 0 0 0 5px var(--capture-ring);z-index:1;pointer-events:none;animation:ringAppear .2s cubic-bezier(.34,1.56,.64,1) both;}
+  @keyframes ringAppear{from{transform:scale(.7);opacity:0}to{transform:scale(1);opacity:1}}
+  .sq.in-check{animation:checkPulse 1s ease-in-out infinite;}
+  @keyframes checkPulse{0%,100%{background-color:inherit}50%{background-color:#ff3333aa !important}}
+  .board-shake{animation:boardShake .4s cubic-bezier(.36,.07,.19,.97) both !important;}
+  @keyframes boardShake{0%,100%{transform:translateX(0)}15%{transform:translateX(-6px) rotate(-.5deg)}30%{transform:translateX(5px) rotate(.4deg)}45%{transform:translateX(-4px) rotate(-.3deg)}60%{transform:translateX(3px) rotate(.2deg)}75%{transform:translateX(-2px)}}
+  .sq.last-move::before{content:'';position:absolute;inset:0;background:rgba(255,220,80,.15);animation:lastMoveRipple .6s ease forwards;pointer-events:none;z-index:0;}
+  @keyframes lastMoveRipple{from{opacity:1}to{opacity:0}}
+
+  /* ── PANEL ── */
+  .panel {
+    background:var(--panel); border:1px solid #c9a44a44; border-radius:6px;
+    padding:22px 20px; min-width:220px; max-width:240px;
+    display:flex; flex-direction:column; gap:14px;
+    box-shadow:0 4px 30px #00000066;
+    animation:panelSlide .7s cubic-bezier(.22,1,.36,1) .15s both;
+  }
+  @keyframes panelSlide{from{opacity:0;transform:translateX(30px)}to{opacity:1;transform:translateX(0)}}
+  .status-box{background:#110800;border:1px solid #c9a44a33;border-radius:4px;padding:12px 14px;text-align:center;transition:border-color .3s;}
+  .status-box.alert{border-color:#ff6644aa;animation:statusAlert .3s ease both;}
+  @keyframes statusAlert{0%,100%{transform:scale(1)}50%{transform:scale(1.04)}}
+  .status-label{font-family:'Cinzel',serif;font-size:.7rem;letter-spacing:.12em;color:var(--gold);opacity:.7;margin-bottom:4px;}
+  .status-val{font-size:1.1rem;font-weight:600;color:var(--text);transition:color .3s;}
+  .status-val.check{color:#ff7b50;} .status-val.mate{color:#ff4444;}
+  .turn-indicator{display:flex;align-items:center;gap:10px;justify-content:center;}
+  .turn-piece{font-size:2rem;filter:drop-shadow(0 2px 4px rgba(0,0,0,.6));transition:all .3s cubic-bezier(.34,1.56,.64,1);}
+  .turn-piece.changed{animation:turnFlip .4s cubic-bezier(.34,1.56,.64,1) both;}
+  @keyframes turnFlip{0%{transform:rotateY(90deg) scale(.6);opacity:0}100%{transform:rotateY(0) scale(1);opacity:1}}
+  .turn-text{font-family:'Cinzel',serif;font-size:.85rem;letter-spacing:.08em;color:var(--gold2);}
+  .cap-label{font-family:'Cinzel',serif;font-size:.65rem;letter-spacing:.1em;color:var(--gold);opacity:.6;margin-bottom:4px;}
+  .cap-pieces{font-size:1.3rem;line-height:1.4;min-height:28px;letter-spacing:2px;}
+  .cap-piece-new{display:inline-block;animation:capPieceIn .3s cubic-bezier(.34,1.56,.64,1) both;}
+  @keyframes capPieceIn{from{transform:scale(0) rotate(-20deg);opacity:0}to{transform:scale(1) rotate(0);opacity:1}}
+  .move-log{background:#110800;border:1px solid #c9a44a22;border-radius:4px;padding:8px 10px;max-height:160px;overflow-y:auto;font-size:.85rem;line-height:1.7;}
+  .move-log::-webkit-scrollbar{width:4px}
+  .move-log::-webkit-scrollbar-thumb{background:var(--gold);border-radius:2px}
+  .move-entry{color:#c8a87a}.move-entry span{color:var(--text);margin:0 2px}
+  .move-entry.new{animation:logEntryIn .25s cubic-bezier(.34,1.56,.64,1) both}
+  @keyframes logEntryIn{from{opacity:0;transform:translateX(-8px)}to{opacity:1;transform:translateX(0)}}
+
+  button {
+    font-family:'Cinzel',serif; font-size:.78rem; letter-spacing:.12em;
+    background:transparent; border:1px solid var(--gold); color:var(--gold);
+    padding:9px 16px; cursor:pointer; border-radius:3px;
+    transition:all .2s, transform .15s; width:100%;
+  }
+  button:hover{background:var(--gold);color:#1a1008;transform:scale(1.03)}
+  button:active{transform:scale(.97)}
+  button:disabled{opacity:.35;cursor:default;transform:none;}
+  button:disabled:hover{background:transparent;color:var(--gold);}
+
+  .my-role-badge {
+    font-family:'Cinzel',serif; font-size:.72rem; letter-spacing:.1em;
+    text-align:center; padding:7px; border-radius:4px;
+    border:1px solid #c9a44a44; background:#110800; color:var(--gold2);
+  }
+  .opp-status {
+    font-size:.82rem; text-align:center; color:#c8a87a;
+    padding:6px; border-radius:4px; border:1px solid #c9a44a22;
+    background:#110800;
+  }
+  .opp-status.online { color:#7ec87e; }
+  .opp-status.offline { color:#ff7b50; }
+
+  .chat-wrap { display:flex; flex-direction:column; gap:6px; }
+  .chat-log {
+    background:#110800; border:1px solid #c9a44a22; border-radius:4px;
+    padding:6px 10px; height:90px; overflow-y:auto; font-size:.82rem; line-height:1.5;
+  }
+  .chat-log::-webkit-scrollbar{width:3px}
+  .chat-log::-webkit-scrollbar-thumb{background:var(--gold);border-radius:2px}
+  .chat-msg{color:#c8a87a;} .chat-msg.mine{color:var(--gold2);} .chat-msg .who{opacity:.6;margin-right:4px;}
+  .chat-input-row{display:flex;gap:6px;}
+  .chat-input {
+    flex:1; background:#110800; border:1px solid #c9a44a33; border-radius:3px;
+    color:var(--text); font-family:'Crimson Text',serif; font-size:.9rem;
+    padding:6px 10px; outline:none; transition:border-color .2s;
+  }
+  .chat-input:focus{border-color:var(--gold);}
+  .chat-send{
+    font-family:'Cinzel',serif; font-size:.7rem; letter-spacing:.08em;
+    background:transparent; border:1px solid var(--gold); color:var(--gold);
+    padding:6px 10px; cursor:pointer; border-radius:3px; white-space:nowrap;
+    transition:all .15s; width:auto;
+  }
+  .chat-send:hover{background:var(--gold);color:#1a1008;}
+
+  .draw-banner {
+    position:fixed; top:20px; left:50%; transform:translateX(-50%);
+    background:var(--panel); border:2px solid var(--gold); border-radius:8px;
+    padding:18px 28px; z-index:300; text-align:center;
+    box-shadow:0 0 40px #c9a44a44;
+    animation:drawBannerIn .3s cubic-bezier(.34,1.4,.64,1) both;
+  }
+  @keyframes drawBannerIn{from{opacity:0;transform:translateX(-50%) translateY(-20px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
+  .draw-banner p{color:var(--text);margin-bottom:12px;font-size:1rem;}
+  .draw-banner-btns{display:flex;gap:10px;justify-content:center;}
+  .draw-banner-btns button{width:auto;padding:8px 20px;}
+
+  .promo-overlay{display:none;position:fixed;inset:0;z-index:100;align-items:center;justify-content:center;}
+  .promo-overlay.show{display:flex;animation:promoFade .25s ease forwards}
+  @keyframes promoFade{from{background:rgba(0,0,0,0)}to{background:rgba(0,0,0,.75)}}
+  .promo-box{background:var(--panel);border:2px solid var(--gold);border-radius:8px;padding:28px 32px;text-align:center;box-shadow:0 0 60px #c9a44a33;animation:promoBoxIn .3s cubic-bezier(.34,1.4,.64,1) both;}
+  @keyframes promoBoxIn{from{transform:scale(.6) translateY(30px);opacity:0}to{transform:scale(1) translateY(0);opacity:1}}
+  .promo-box h3{font-family:'Cinzel',serif;color:var(--gold);margin-bottom:18px;font-size:1.1rem;letter-spacing:.1em}
+  .promo-pieces{display:flex;gap:18px;justify-content:center}
+  .promo-piece{font-size:3.2rem;cursor:pointer;filter:drop-shadow(0 2px 8px rgba(0,0,0,.5));transition:transform .15s cubic-bezier(.34,1.56,.64,1);animation:promoPieceIn .3s cubic-bezier(.34,1.56,.64,1) calc(var(--i)*.06s) both;}
+  @keyframes promoPieceIn{from{transform:scale(0) rotate(-30deg);opacity:0}to{transform:scale(1) rotate(0);opacity:1}}
+  .promo-piece:hover{transform:scale(1.25) translateY(-4px)}
+
+  .mate-banner{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.7);z-index:200;animation:bannerIn .4s cubic-bezier(.22,1,.36,1) both;backdrop-filter:blur(6px);}
+  @keyframes bannerIn{from{opacity:0}to{opacity:1}}
+  .mate-box{background:var(--panel);border:2px solid var(--gold);border-radius:12px;padding:40px 50px;text-align:center;box-shadow:0 0 80px #c9a44a55;animation:mateBoxIn .45s cubic-bezier(.34,1.4,.64,1) .1s both;}
+  @keyframes mateBoxIn{from{transform:scale(.5) translateY(40px);opacity:0}to{transform:scale(1) translateY(0);opacity:1}}
+  .mate-box h2{font-family:'Cinzel',serif;font-size:2rem;color:var(--gold);letter-spacing:.15em;margin-bottom:12px;text-shadow:0 0 30px #c9a44a88}
+  .mate-box p{color:var(--text);font-size:1.15rem;margin-bottom:24px}
+  .mate-box button{max-width:160px;margin:0 auto}
+
+  #particles{position:fixed;inset:0;pointer-events:none;z-index:50}
+
+  @media(max-width:700px){
+    :root{--sq:44px}
+    h1.game-title{font-size:1.3rem}
+    .panel{min-width:180px;max-width:100%}
+    .container{gap:16px}
+  }
+</style>
+</head>
+<body>
+<canvas id="particles"></canvas>
+
+<!-- ═══════════════ LOBBY ═══════════════ -->
+<div id="lobby">
+  <h1>♟ CHESS ♟</h1>
+  <div class="lobby-card">
+    <h2>СЕТЕВАЯ ИГРА</h2>
+    <div class="field">
+      <label>АДРЕС СЕРВЕРА</label>
+      <input id="srv-host" type="text" placeholder="192.168.1.10:3000" value="localhost:3000">
+    </div>
+    <div class="field">
+      <label>КОД КОМНАТЫ</label>
+      <input id="room-id" type="text" placeholder="my-room" value="main" maxlength="20">
+    </div>
+    <div class="conn-status" id="conn-status">Введите адрес сервера</div>
+    <div class="btn-row">
+      <button class="lobby-btn primary" onclick="connectToServer()">ПОДКЛЮЧИТЬСЯ</button>
+    </div>
+    <hr class="divider">
+    <div style="font-size:.82rem;color:#c8a87a;text-align:center;line-height:1.6">
+      Запустите <b style="color:var(--gold)">node server.js</b> на хосте,<br>
+      затем укажите его IP и порт.
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ WAITING ═══════════════ -->
+<div id="waiting">
+  <h2>♟ CHESS ♟</h2>
+  <div class="role-badge" id="role-badge">Вы: Белые ♔</div>
+  <div class="waiting-anim">⏳</div>
+  <div class="wait-msg">Ожидание второго игрока…</div>
+  <div class="room-url-box">
+    <div class="room-url-label">ПОДЕЛИТЕСЬ ССЫЛКОЙ</div>
+    <div class="room-url" id="share-url" onclick="copyShareUrl()">—</div>
+  </div>
+  <button class="lobby-btn" onclick="disconnect()">ОТКЛЮЧИТЬСЯ</button>
+</div>
+
+<!-- ═══════════════ GAME ═══════════════ -->
+<div id="game">
+  <div class="container">
+    <div class="board-wrap">
+      <h1 class="game-title">♟ CHESS ♟</h1>
+      <div style="display:flex;align-items:flex-start">
+        <div class="coords-col" id="col-coords"></div>
+        <div>
+          <div id="board"></div>
+          <div class="coords-row" id="row-coords"></div>
+        </div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="my-role-badge" id="my-role-badge">Вы: Белые ♔</div>
+      <div class="opp-status" id="opp-status">Соперник онлайн</div>
+      <div class="status-box" id="status-box">
+        <div class="status-label">СТАТУС</div>
+        <div class="status-val" id="status">Игра идёт</div>
+      </div>
+      <div class="turn-indicator">
+        <div class="turn-piece" id="turn-piece">♔</div>
+        <div class="turn-text" id="turn-text">Ход белых</div>
+      </div>
+      <div>
+        <div class="cap-label">БЕЛЫЕ ВЗЯЛИ</div>
+        <div class="cap-pieces" id="white-cap"></div>
+      </div>
+      <div>
+        <div class="cap-label">ЧЁРНЫЕ ВЗЯЛИ</div>
+        <div class="cap-pieces" id="black-cap"></div>
+      </div>
+      <div>
+        <div class="cap-label">ИСТОРИЯ ХОДОВ</div>
+        <div class="move-log" id="move-log"></div>
+      </div>
+      <div class="chat-wrap">
+        <div class="cap-label">ЧАТ</div>
+        <div class="chat-log" id="chat-log"></div>
+        <div class="chat-input-row">
+          <input class="chat-input" id="chat-input" placeholder="Сообщение…" maxlength="200" onkeydown="if(event.key==='Enter')sendChat()">
+          <button class="chat-send" onclick="sendChat()">→</button>
+        </div>
+      </div>
+      <button id="btn-draw" onclick="offerDraw()">НИЧЬЯ?</button>
+      <button id="btn-resign" onclick="resignGame()">СДАТЬСЯ</button>
+      <button onclick="disconnect()">ВЫЙТИ</button>
+    </div>
+  </div>
+</div>
+
+<!-- promo -->
+<div class="promo-overlay" id="promo-overlay">
+  <div class="promo-box">
+    <h3>ПРЕВРАЩЕНИЕ ПЕШКИ</h3>
+    <div class="promo-pieces" id="promo-pieces"></div>
+  </div>
+</div>
+
+<script>
+// ════════════════════════════════════════
+//  PIECES & CHESS ENGINE
+// ════════════════════════════════════════
+const PIECES={wK:'♔',wQ:'♕',wR:'♖',wB:'♗',wN:'♘',wP:'♙',bK:'♚',bQ:'♛',bR:'♜',bB:'♝',bN:'♞',bP:'♟'};
+let board,turn,selected,highlights,lastMove,castling,enPassant;
+let history,capturedWhite,capturedBlack,moveLog;
+let isAnimating=false;
+
+function initState(){
+  board=[
+    ['bR','bN','bB','bQ','bK','bB','bN','bR'],
+    ['bP','bP','bP','bP','bP','bP','bP','bP'],
+    [null,null,null,null,null,null,null,null],[null,null,null,null,null,null,null,null],
+    [null,null,null,null,null,null,null,null],[null,null,null,null,null,null,null,null],
+    ['wP','wP','wP','wP','wP','wP','wP','wP'],
+    ['wR','wN','wB','wQ','wK','wB','wN','wR'],
+  ];
+  turn='w';selected=null;highlights=[];lastMove=null;
+  castling={wK:true,wQR:true,wKR:true,bK:true,bQR:true,bKR:true};
+  enPassant=null;history=[];capturedWhite=[];capturedBlack=[];moveLog=[];isAnimating=false;
+}
+
+const inBounds=(r,c)=>r>=0&&r<8&&c>=0&&c<8;
+const color=p=>p?p[0]:null;
+const pieceType=p=>p?p[1]:null;
+const enemy=(p,t)=>p&&color(p)!==t;
+const friendly=(p,t)=>p&&color(p)===t;
+const cloneBoard=b=>b.map(r=>[...r]);
+const cloneCast=c=>({...c});
+
+function getSqEl(r,c){return document.querySelector(`[data-r="${r}"][data-c="${c}"]`);}
+function getSqCenter(r,c){const sq=getSqEl(r,c);if(!sq)return null;const rect=sq.getBoundingClientRect();return{x:rect.left+rect.width/2,y:rect.top+rect.height/2};}
+function getSqSize(){const sq=document.querySelector('.sq');return sq?sq.getBoundingClientRect().width:72;}
+
+function rawMoves(b,r,c,enPas,cast){
+  const p=b[r][c];if(!p)return[];
+  const col=color(p),type=pieceType(p),moves=[];
+  const add=(nr,nc,extra)=>{if(inBounds(nr,nc)&&!friendly(b[nr][nc],col))moves.push({r:nr,c:nc,...(extra||{})});};
+  if(type==='P'){
+    const dir=col==='w'?-1:1,start=col==='w'?6:1;
+    if(inBounds(r+dir,c)&&!b[r+dir][c]){moves.push({r:r+dir,c});if(r===start&&!b[r+2*dir][c])moves.push({r:r+2*dir,c});}
+    for(const dc of[-1,1])if(inBounds(r+dir,c+dc)){
+      if(enemy(b[r+dir][c+dc],col))moves.push({r:r+dir,c:c+dc});
+      else if(enPas&&enPas.r===r+dir&&enPas.c===c+dc)moves.push({r:r+dir,c:c+dc,enPassant:true});
+    }
+  }else if(type==='N'){for(const[dr,dc]of[[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]])add(r+dr,c+dc);}
+  else if(type==='B'){for(const[dr,dc]of[[-1,-1],[-1,1],[1,-1],[1,1]]){let nr=r+dr,nc=c+dc;while(inBounds(nr,nc)){add(nr,nc);if(b[nr][nc])break;nr+=dr;nc+=dc;}}}
+  else if(type==='R'){for(const[dr,dc]of[[-1,0],[1,0],[0,-1],[0,1]]){let nr=r+dr,nc=c+dc;while(inBounds(nr,nc)){add(nr,nc);if(b[nr][nc])break;nr+=dr;nc+=dc;}}}
+  else if(type==='Q'){for(const[dr,dc]of[[-1,-1],[-1,1],[1,-1],[1,1],[-1,0],[1,0],[0,-1],[0,1]]){let nr=r+dr,nc=c+dc;while(inBounds(nr,nc)){add(nr,nc);if(b[nr][nc])break;nr+=dr;nc+=dc;}}}
+  else if(type==='K'){
+    for(const[dr,dc]of[[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]])add(r+dr,c+dc);
+    if(cast){
+      const kr=col==='w'?7:0;
+      if(col==='w'&&cast.wK&&cast.wKR&&!b[kr][5]&&!b[kr][6]&&r===kr&&c===4)moves.push({r:kr,c:6,castle:'K'});
+      if(col==='w'&&cast.wK&&cast.wQR&&!b[kr][1]&&!b[kr][2]&&!b[kr][3]&&r===kr&&c===4)moves.push({r:kr,c:2,castle:'Q'});
+      if(col==='b'&&cast.bK&&cast.bKR&&!b[kr][5]&&!b[kr][6]&&r===kr&&c===4)moves.push({r:kr,c:6,castle:'K'});
+      if(col==='b'&&cast.bK&&cast.bQR&&!b[kr][1]&&!b[kr][2]&&!b[kr][3]&&r===kr&&c===4)moves.push({r:kr,c:2,castle:'Q'});
+    }
+  }
+  return moves;
+}
+function isAttacked(b,r,c,byColor){for(let pr=0;pr<8;pr++)for(let pc=0;pc<8;pc++)if(color(b[pr][pc])===byColor&&rawMoves(b,pr,pc,null,null).some(m=>m.r===r&&m.c===c))return true;return false;}
+function findKing(b,col){for(let r=0;r<8;r++)for(let c=0;c<8;c++)if(b[r][c]===col+'K')return[r,c];return null;}
+function inCheck(b,col){const k=findKing(b,col);return k?isAttacked(b,k[0],k[1],col==='w'?'b':'w'):false;}
+function legalMoves(b,r,c,enPas,cast){
+  const p=b[r][c];if(!p)return[];const col=color(p);
+  return rawMoves(b,r,c,enPas,cast).filter(m=>{
+    if(m.castle){const opp=col==='w'?'b':'w';if(inCheck(b,col))return false;const dir=m.castle==='K'?1:-1,mid=4+dir;const nb1=cloneBoard(b);nb1[r][mid]=p;nb1[r][4]=null;if(isAttacked(nb1,r,mid,opp))return false;}
+    const nb=cloneBoard(b);
+    if(m.enPassant){const er=col==='w'?m.r+1:m.r-1;nb[er][m.c]=null;}
+    if(m.castle){const kr=col==='w'?7:0;if(m.castle==='K'){nb[kr][5]=nb[kr][7];nb[kr][7]=null;}else{nb[kr][3]=nb[kr][0];nb[kr][0]=null;}}
+    nb[m.r][m.c]=p;nb[r][c]=null;return!inCheck(nb,col);
+  });
+}
+function hasAnyLegal(b,col,enPas,cast){for(let r=0;r<8;r++)for(let c=0;c<8;c++)if(color(b[r][c])===col&&legalMoves(b,r,c,enPas,cast).length)return true;return false;}
+
+// ════════════════════════════════════════
+//  NETWORK
+// ════════════════════════════════════════
+let ws=null;
+let myRole=null; // 'white'|'black'|'spectator'
+let gameActive=false;
+let opponentOnline=false;
+
+function connectToServer(){
+  const host=document.getElementById('srv-host').value.trim();
+  const room=document.getElementById('room-id').value.trim()||'main';
+  if(!host){setConnStatus('Укажите адрес сервера','err');return;}
+  const wsUrl=`wss://${host}?room=${encodeURIComponent(room)}`;
+  setConnStatus('Подключение…','');
+  if(ws){try{ws.close();}catch(e){}}
+  try{ ws=new WebSocket(wsUrl); }
+  catch(e){ setConnStatus('Неверный адрес','err'); return; }
+  ws.onopen=()=>setConnStatus('Подключено, ожидание роли…','ok');
+  ws.onmessage=e=>{ try{handleMsg(JSON.parse(e.data));}catch(x){} };
+  ws.onerror=()=>setConnStatus('Ошибка соединения','err');
+  ws.onclose=()=>handleDisconnect();
+}
+
+function send(msg){ if(ws&&ws.readyState===1) ws.send(JSON.stringify(msg)); }
+
+function handleMsg(msg){
+  switch(msg.type){
+    case 'welcome':
+      myRole=msg.role;
+      if(myRole==='spectator'){
+        setConnStatus('Вы — зритель','ok');
+      } else {
+        setConnStatus('Вы: '+(myRole==='white'?'Белые':'Чёрные'),'ok');
+      }
+      showWaiting(msg.roomId);
+      break;
+    case 'room_info':
+      opponentOnline=(myRole==='white'&&msg.blackConnected)||(myRole==='black'&&msg.whiteConnected)||myRole==='spectator';
+      updateOppStatus();
+      break;
+    case 'start':
+      startGame();
+      break;
+    case 'move':
+      applyRemoteMove(msg.move);
+      break;
+    case 'resign':
+      handleResign(msg.role);
+      break;
+    case 'draw_offer':
+      handleDrawOffer(msg.role);
+      break;
+    case 'draw_accept':
+      endGame('Ничья по соглашению');
+      break;
+    case 'draw_decline':
+      addChat('Система','Предложение ничьей отклонено.');
+      removeBanner('draw-banner');
+      break;
+    case 'chat':
+      const who=msg.role==='white'?'Белые':msg.role==='black'?'Чёрные':'Зритель';
+      addChat(who, msg.text, msg.role===myRole);
+      break;
+    case 'opponent_left':
+      opponentOnline=false;
+      updateOppStatus();
+      addChat('Система','Соперник отключился.');
+      break;
+  }
+}
+
+function handleDisconnect(){
+  if(gameActive){
+    addChat('Система','Соединение прервано.');
+    updateOppStatus();
+  } else {
+    setConnStatus('Соединение прервано','err');
+    showLobby();
+  }
+  opponentOnline=false;
+  ws=null;
+}
+
+function disconnect(){
+  if(ws){try{ws.close();}catch(e){}}
+  ws=null;myRole=null;gameActive=false;
+  showLobby();
+}
+
+// ════════════════════════════════════════
+//  SCREEN MANAGEMENT
+// ════════════════════════════════════════
+function showLobby(){
+  document.getElementById('lobby').style.display='flex';
+  document.getElementById('waiting').style.display='none';
+  document.getElementById('game').style.display='none';
+}
+function showWaiting(roomId){
+  document.getElementById('lobby').style.display='none';
+  document.getElementById('waiting').style.display='flex';
+  document.getElementById('game').style.display='none';
+  const roleTxt=myRole==='white'?'Белые ♔':myRole==='black'?'Чёрные ♚':'Зритель';
+  document.getElementById('role-badge').textContent='Вы: '+roleTxt;
+  const host=document.getElementById('srv-host').value.trim();
+  const url=`http://${host}?room=${encodeURIComponent(roomId)}`;
+  document.getElementById('share-url').textContent=url;
+  document.getElementById('share-url').dataset.url=url;
+}
+function copyShareUrl(){
+  const url=document.getElementById('share-url').dataset.url;
+  if(navigator.clipboard)navigator.clipboard.writeText(url).then(()=>{ const el=document.getElementById('share-url');el.textContent='Скопировано!';setTimeout(()=>el.textContent=url,1500); });
+}
+function startGame(){
+  document.getElementById('lobby').style.display='none';
+  document.getElementById('waiting').style.display='none';
+  document.getElementById('game').style.display='block';
+  gameActive=true;
+  initState();
+  const roleTxt=myRole==='white'?'Белые ♔':myRole==='black'?'Чёрные ♚':'Зритель';
+  document.getElementById('my-role-badge').textContent='Вы: '+roleTxt;
+  updateOppStatus();
+  document.getElementById('white-cap').dataset.count=0;
+  document.getElementById('black-cap').dataset.count=0;
+  prevTurn='w';
+  buildBoard();
+  renderBoard({newGame:true});
+  addChat('Система','Игра началась! Белые ходят первыми.');
+}
+
+function updateOppStatus(){
+  const el=document.getElementById('opp-status');
+  if(!el)return;
+  el.className='opp-status '+(opponentOnline?'online':'offline');
+  el.textContent=opponentOnline?'Соперник онлайн ●':'Соперник не подключён ○';
+}
+
+function setConnStatus(msg,cls){
+  const el=document.getElementById('conn-status');
+  if(!el)return;
+  el.textContent=msg;el.className='conn-status'+(cls?' '+cls:'');
+}
+
+// ════════════════════════════════════════
+//  BOARD VIEW HELPERS
+//  For black: visual row = 7-r, visual col = 7-c
+// ════════════════════════════════════════
+
+// Convert logical (r,c) → visual position index used in DOM data-r/data-c
+function logicalToVisual(r, c){
+  if(myRole === 'black') return { r: 7-r, c: 7-c };
+  return { r, c };
+}
+
+// ════════════════════════════════════════
+//  RENDER
+// ════════════════════════════════════════
+let prevTurn='w';
+let renderedPieces=Array.from({length:8},()=>Array(8).fill(null));
+
+function buildBoard(){
+  const boardEl=document.getElementById('board');
+  boardEl.innerHTML='';
+  // Remove any old flip class — we handle orientation via logical layout
+  boardEl.classList.remove('flipped');
+  renderedPieces=Array.from({length:8},()=>Array(8).fill(null));
+
+  for(let vi=0;vi<8;vi++){
+    const rowEl=document.createElement('div');
+    rowEl.className='board-row';
+    for(let vj=0;vj<8;vj++){
+      // Visual index → logical index
+      const lr = myRole==='black' ? 7-vi : vi;
+      const lc = myRole==='black' ? 7-vj : vj;
+
+      const sq=document.createElement('div');
+      // Square color based on logical coords (so board looks standard)
+      sq.className='sq '+((lr+lc)%2===0?'light':'dark');
+      // Store LOGICAL coords in data attributes — click handler uses these directly
+      sq.dataset.r=lr;
+      sq.dataset.c=lc;
+      sq.addEventListener('click',()=>handleClick(lr,lc));
+      sq.addEventListener('mousemove',e=>{
+        const rect=sq.getBoundingClientRect();
+        sq.style.setProperty('--mx',((e.clientX-rect.left)/rect.width*100)+'%');
+        sq.style.setProperty('--my',((e.clientY-rect.top)/rect.height*100)+'%');
+      });
+      if(board[lr][lc]){
+        const span=document.createElement('div');span.className='piece';
+        span.textContent=PIECES[board[lr][lc]];sq.appendChild(span);
+      }
+      renderedPieces[lr][lc]=board[lr][lc];
+      rowEl.appendChild(sq);
+    }
+    boardEl.appendChild(rowEl);
+  }
+  renderCoords();
+}
+
+function renderBoard(opts){
+  opts=opts||{};
+  const kcheck=inCheck(board,turn)?findKing(board,turn):null;
+  for(let r=0;r<8;r++){
+    for(let c=0;c<8;c++){
+      const sq=getSqEl(r,c);if(!sq)continue;
+      sq.classList.remove('selected','last-move','in-check','locked');
+      if(selected&&selected.r===r&&selected.c===c)sq.classList.add('selected');
+      if(lastMove&&((lastMove.fr===r&&lastMove.fc===c)||(lastMove.r===r&&lastMove.c===c)))sq.classList.add('last-move');
+      if(kcheck&&kcheck[0]===r&&kcheck[1]===c)sq.classList.add('in-check');
+      if(!canIMove())sq.classList.add('locked');
+      sq.querySelectorAll('.hint-dot,.hint-ring').forEach(e=>e.remove());
+      const hint=highlights.find(h=>h.r===r&&h.c===c);
+      if(hint){
+        if(board[r][c]||hint.enPassant){const ring=document.createElement('div');ring.className='hint-ring';sq.appendChild(ring);}
+        else{const dot=document.createElement('div');dot.className='hint-dot';sq.appendChild(dot);}
+      }
+      const want=board[r][c],had=renderedPieces[r][c];
+      const hidden=opts.hideSquare&&opts.hideSquare.r===r&&opts.hideSquare.c===c;
+      const doAnim=(opts.animSquare&&opts.animSquare.r===r&&opts.animSquare.c===c)||opts.newGame;
+      if(want!==had){
+        const old=sq.querySelector('.piece');if(old)old.remove();
+        if(want){
+          const span=document.createElement('div');span.className='piece';
+          span.textContent=PIECES[want];
+          if(hidden)span.style.opacity='0';
+          if(doAnim)span.classList.add('piece-enter');
+          sq.appendChild(span);
+        }
+        renderedPieces[r][c]=want;
+      }else{
+        const span=sq.querySelector('.piece');
+        if(span){
+          span.style.opacity=hidden?'0':'1';
+          if(doAnim){span.classList.remove('piece-enter');void span.offsetWidth;span.classList.add('piece-enter');}
+        }
+      }
+    }
+  }
+  renderPanel();
+}
+
+function renderCoords(){
+  const colEl=document.getElementById('col-coords'),rowEl=document.getElementById('row-coords');
+  if(!colEl)return;
+  colEl.innerHTML='';rowEl.innerHTML='';
+  // Column labels (rank numbers) — shown top to bottom visually
+  for(let vi=0;vi<8;vi++){
+    const lr = myRole==='black' ? vi+1 : 8-vi;
+    const d=document.createElement('div');d.className='coord';d.textContent=lr;
+    colEl.appendChild(d);
+  }
+  // Row labels (file letters) — shown left to right visually
+  const files='abcdefgh';
+  for(let vj=0;vj<8;vj++){
+    const lc = myRole==='black' ? 7-vj : vj;
+    const d=document.createElement('div');d.className='coord';d.textContent=files[lc];
+    rowEl.appendChild(d);
+  }
+}
+
+function renderPanel(){
+  const tp=document.getElementById('turn-piece'),tt=document.getElementById('turn-text');
+  if(!tp)return;
+  if(turn!==prevTurn){tp.classList.remove('changed');void tp.offsetWidth;tp.classList.add('changed');prevTurn=turn;}
+  tp.textContent=turn==='w'?'♔':'♚';
+  tt.textContent=turn==='w'?'Ход белых':'Ход чёрных';
+  renderCaptured('white-cap',capturedWhite);
+  renderCaptured('black-cap',capturedBlack);
+  const log=document.getElementById('move-log');log.innerHTML='';
+  for(let i=0;i<moveLog.length;i+=2){
+    const div=document.createElement('div');div.className='move-entry';
+    if(i>=moveLog.length-2)div.classList.add('new');
+    div.innerHTML=`<span>${Math.floor(i/2)+1}.</span> ${moveLog[i]||''} <span>${moveLog[i+1]||''}</span>`;
+    log.appendChild(div);
+  }
+  log.scrollTop=log.scrollHeight;
+  const statusEl=document.getElementById('status'),statusBox=document.getElementById('status-box');
+  const check=inCheck(board,turn),anyLegal=hasAnyLegal(board,turn,enPassant,castling);
+  statusEl.className='status-val';statusBox.classList.remove('alert');
+  if(!anyLegal){
+    if(check){statusEl.textContent=(turn==='w'?'Белые':'Чёрные')+' в мате!';statusEl.classList.add('mate');}
+    else{statusEl.textContent='Пат!';statusEl.classList.add('check');}
+    void statusBox.offsetWidth;statusBox.classList.add('alert');
+    if(check)setTimeout(showMateBanner,600);
+  }else if(check){
+    statusEl.textContent=(turn==='w'?'Белым':'Чёрным')+' шах!';statusEl.classList.add('check');
+    void statusBox.offsetWidth;statusBox.classList.add('alert');
+    const boardEl=document.getElementById('board');
+    boardEl.classList.remove('board-shake');void boardEl.offsetWidth;boardEl.classList.add('board-shake');
+    boardEl.addEventListener('animationend',()=>boardEl.classList.remove('board-shake'),{once:true});
+  }else{statusEl.textContent='Игра идёт';}
+  const resign=document.getElementById('btn-resign'),draw=document.getElementById('btn-draw');
+  if(resign)resign.disabled=myRole==='spectator'||!gameActive;
+  if(draw)draw.disabled=myRole==='spectator'||!gameActive;
+}
+
+function renderCaptured(id,list){
+  const el=document.getElementById(id);if(!el)return;
+  const prev=el.dataset.count?parseInt(el.dataset.count):0;
+  if(list.length>prev)
+    el.innerHTML=list.slice(0,prev).map(p=>PIECES[p]).join('')+list.slice(prev).map(p=>`<span class="cap-piece-new">${PIECES[p]}</span>`).join('');
+  else el.innerHTML=list.map(p=>PIECES[p]).join('');
+  el.dataset.count=list.length;
+}
+
+// ════════════════════════════════════════
+//  CLICK & MOVE (local player)
+// ════════════════════════════════════════
+function canIMove(){
+  if(myRole==='spectator')return false;
+  if(!gameActive)return false;
+  return(myRole==='white'&&turn==='w')||(myRole==='black'&&turn==='b');
+}
+
+function handleClick(r,c){
+  if(isAnimating)return;
+  if(!canIMove())return;
+  if(!hasAnyLegal(board,turn,enPassant,castling))return;
+  const p=board[r][c];
+  if(selected){
+    const move=highlights.find(h=>h.r===r&&h.c===c);
+    if(move){executeMove(selected.r,selected.c,move,true);}
+    else if(friendly(p,turn)){selected={r,c};highlights=legalMoves(board,r,c,enPassant,castling);renderBoard();}
+    else{selected=null;highlights=[];renderBoard();}
+  }else{
+    if(friendly(p,turn)){selected={r,c};highlights=legalMoves(board,r,c,enPassant,castling);renderBoard();}
+  }
+}
+
+function applyRemoteMove(move){
+  executeMove(move.fr, move.fc, move, false);
+}
+
+function executeMove(fr,fc,move,sendToNetwork){
+  history.push({
+    board:cloneBoard(board),turn,selected,highlights,
+    lastMove:lastMove?{...lastMove}:null,
+    castling:cloneCast(castling),enPassant:enPassant?{...enPassant}:null,
+    capturedWhite:[...capturedWhite],capturedBlack:[...capturedBlack],moveLog:[...moveLog]
+  });
+  const p=board[fr][fc];
+  let col=color(p);
+  const type=pieceType(p);
+  const target=board[move.r][move.c];
+  const notation=toNotation(fr,fc,move,p,target);
+  if(target) col==='w'?capturedWhite.push(target):capturedBlack.push(target);
+  let epCap=null;
+  if(move.enPassant){const epRow=col==='w'?move.r+1:move.r-1;epCap=board[epRow][move.c];col==='w'?capturedWhite.push(epCap):capturedBlack.push(epCap);board[epRow][move.c]=null;}
+  if(move.castle){const kr=col==='w'?7:0;if(move.castle==='K'){board[kr][5]=board[kr][7];board[kr][7]=null;}else{board[kr][3]=board[kr][0];board[kr][0]=null;}}
+  board[move.r][move.c]=p;board[fr][fc]=null;
+  lastMove={fr,fc,r:move.r,c:move.c};
+  if(type==='K'){castling[col+'K']=false;castling[col+'QR']=false;castling[col+'KR']=false;}
+  if(type==='R'){if(fr===7&&fc===0)castling.wQR=false;if(fr===7&&fc===7)castling.wKR=false;if(fr===0&&fc===0)castling.bQR=false;if(fr===0&&fc===7)castling.bKR=false;}
+  enPassant=(type==='P'&&Math.abs(move.r-fr)===2)?{r:(fr+move.r)/2,c:fc}:null;
+  const captured=target||epCap;
+  const isPromo=type==='P'&&(move.r===0||move.r===7);
+
+  // Handle remote promo: server sends promo piece type
+  if(move.promo && !sendToNetwork){
+    board[move.r][move.c]=col+move.promo;
+    moveLog.push(notation+'='+move.promo);
+    turn=turn==='w'?'b':'w';
+    selected=null;highlights=[];
+    if(captured)spawnParticles(move.r,move.c);
+    renderBoard({animSquare:{r:move.r,c:move.c}});
+    return;
+  }
+
+  if(sendToNetwork){
+    send({type:'move', turn:col, move:{fr,fc,r:move.r,c:move.c,castle:move.castle||null,enPassant:move.enPassant||null}});
+  }
+
+  const fromCenter=getSqCenter(fr,fc);
+  const toCenter=getSqCenter(move.r,move.c);
+  renderBoard({hideSquare:{r:move.r,c:move.c}});
+  animateMoveCoords(fromCenter,toCenter,move.r,move.c,p,captured,()=>{
+    renderBoard({animSquare:{r:move.r,c:move.c}});
+    if(isPromo){
+      moveLog.push(notation);turn=turn==='w'?'b':'w';
+      selected=null;highlights=[];
+      if(sendToNetwork){
+        showPromo(move.r,move.c,col,(chosenType)=>{
+          board[move.r][move.c]=col+chosenType;
+          moveLog[moveLog.length-1]+='='+chosenType;
+          send({type:'move',turn:col,move:{fr:-1,fc:-1,r:move.r,c:move.c,promo:chosenType}});
+          spawnParticles(move.r,move.c,true);
+          renderBoard({animSquare:{r:move.r,c:move.c}});
+        });
+      }
+      return;
+    }
+    moveLog.push(notation);turn=turn==='w'?'b':'w';
+    selected=null;highlights=[];
+    if(captured)spawnParticles(move.r,move.c);
+    renderBoard({animSquare:{r:move.r,c:move.c}});
+  });
+}
+
+function toNotation(fr,fc,move,p,target){
+  const files='abcdefgh',type=pieceType(p);
+  const cap=target||move.enPassant?'x':'';
+  const pref=type==='P'?(cap?files[fc]:''):type;
+  if(move.castle)return move.castle==='K'?'O-O':'O-O-O';
+  return pref+cap+files[move.c]+(8-move.r);
+}
+
+// ════════════════════════════════════════
+//  PROMO
+// ════════════════════════════════════════
+function showPromo(r,c,col,cb){
+  const pp=document.getElementById('promo-pieces');pp.innerHTML='';
+  ['Q','R','B','N'].forEach((t,i)=>{
+    const div=document.createElement('div');div.className='promo-piece';
+    div.style.setProperty('--i',i);div.textContent=PIECES[col+t];
+    div.onclick=()=>{document.getElementById('promo-overlay').classList.remove('show');cb(t);};
+    pp.appendChild(div);
+  });
+  document.getElementById('promo-overlay').classList.add('show');
+}
+
+// ════════════════════════════════════════
+//  FLY ANIMATION
+// ════════════════════════════════════════
+function animateMoveCoords(fromC,toC,tr,tc,piece,captured,onDone){
+  isAnimating=true;
+  const sqSize=getSqSize();
+  if(!fromC||!toC){onDone();isAnimating=false;return;}
+  if(captured){
+    const toSq=getSqEl(tr,tc);
+    if(toSq){const burst=document.createElement('div');burst.className='piece-capture';burst.textContent=PIECES[captured];toSq.appendChild(burst);burst.addEventListener('animationend',()=>burst.remove(),{once:true});}
+  }
+  const fly=document.createElement('div');fly.className='piece-flying';fly.textContent=PIECES[piece];
+  const dist=Math.sqrt((toC.x-fromC.x)**2+(toC.y-fromC.y)**2);
+  const dur=Math.min(0.38,Math.max(0.16,dist/900));
+  fly.style.setProperty('--fly-dur',dur+'s');
+  fly.style.cssText+=`;left:${fromC.x-sqSize/2}px;top:${fromC.y-sqSize/2}px;width:${sqSize}px;height:${sqSize}px;font-size:${sqSize*.78}px`;
+  document.body.appendChild(fly);
+  fly.getBoundingClientRect();
+  fly.style.left=(toC.x-sqSize/2)+'px';fly.style.top=(toC.y-sqSize/2)+'px';
+  setTimeout(()=>{fly.remove();onDone();isAnimating=false;},dur*1000+40);
+}
+
+// ════════════════════════════════════════
+//  GAME EVENTS
+// ════════════════════════════════════════
+function offerDraw(){
+  if(!gameActive||myRole==='spectator')return;
+  send({type:'draw_offer'});
+  addChat('Система','Вы предложили ничью.');
+}
+function resignGame(){
+  if(!gameActive||myRole==='spectator')return;
+  if(!confirm('Вы уверены, что хотите сдаться?'))return;
+  send({type:'resign'});
+  handleResign(myRole);
+}
+function handleResign(role){
+  const who=role==='white'?'Белые':'Чёрные';
+  endGame(who+' сдались.');
+}
+function handleDrawOffer(fromRole){
+  if(fromRole===myRole)return;
+  if(myRole==='spectator'){addChat('Система','Предложена ничья.');return;}
+  const banner=document.createElement('div');banner.className='draw-banner';banner.id='draw-banner';
+  banner.innerHTML=`<p>Соперник предлагает ничью</p><div class="draw-banner-btns"><button onclick="acceptDraw()">Принять</button><button onclick="declineDraw()">Отклонить</button></div>`;
+  document.body.appendChild(banner);
+}
+function acceptDraw(){send({type:'draw_accept'});endGame('Ничья по соглашению');removeBanner('draw-banner');}
+function declineDraw(){send({type:'draw_decline'});removeBanner('draw-banner');}
+function removeBanner(id){const b=document.getElementById(id);if(b)b.remove();}
+function endGame(msg){
+  gameActive=false;
+  addChat('Система',msg);
+  const el=document.getElementById('status');
+  if(el){el.textContent=msg;el.className='status-val mate';}
+}
+
+function showMateBanner(){
+  if(document.getElementById('mate-banner'))return;
+  const winner=turn==='w'?'Чёрные':'Белые';
+  const div=document.createElement('div');div.className='mate-banner';div.id='mate-banner';
+  div.innerHTML=`<div class="mate-box"><h2>♛ МАТ ♛</h2><p>${winner} победили!</p><button onclick="removeBanner('mate-banner')">OK</button></div>`;
+  document.body.appendChild(div);
+  const kpos=findKing(board,turn);
+  if(kpos)for(let i=0;i<6;i++)setTimeout(()=>spawnParticles(kpos[0],kpos[1],true),i*150);
+}
+
+// ════════════════════════════════════════
+//  CHAT
+// ════════════════════════════════════════
+function sendChat(){
+  const inp=document.getElementById('chat-input');
+  const text=inp.value.trim();
+  if(!text)return;
+  send({type:'chat',text});
+  inp.value='';
+}
+function addChat(who,text,mine){
+  const log=document.getElementById('chat-log');if(!log)return;
+  const div=document.createElement('div');div.className='chat-msg'+(mine?' mine':'');
+  div.innerHTML=`<span class="who">${who}:</span>${text}`;
+  log.appendChild(div);log.scrollTop=log.scrollHeight;
+}
+
+// ════════════════════════════════════════
+//  PARTICLES
+// ════════════════════════════════════════
+const canvas=document.getElementById('particles');
+const ctx=canvas.getContext('2d');
+let particles=[];
+function resizeCanvas(){canvas.width=innerWidth;canvas.height=innerHeight;}
+window.addEventListener('resize',resizeCanvas);resizeCanvas();
+function spawnParticles(r,c,golden=false){
+  const center=getSqCenter(r,c);if(!center)return;
+  for(let i=0;i<(golden?50:20);i++){
+    const angle=Math.random()*Math.PI*2,speed=(golden?3:1.5)+Math.random()*(golden?7:4);
+    const hue=golden?(38+Math.random()*25):(Math.random()*360);
+    particles.push({x:center.x,y:center.y,vx:Math.cos(angle)*speed,vy:Math.sin(angle)*speed-2,life:1,decay:.018+Math.random()*.02,r:2+Math.random()*(golden?7:5),color:`hsl(${hue},90%,${golden?62:68}%)`});
+  }
+  if(!afRunning)animParticles();
+}
+let afRunning=false;
+function animParticles(){
+  if(!particles.length){afRunning=false;ctx.clearRect(0,0,canvas.width,canvas.height);return;}
+  afRunning=true;ctx.clearRect(0,0,canvas.width,canvas.height);
+  particles=particles.filter(p=>{
+    p.x+=p.vx;p.y+=p.vy;p.vy+=.15;p.life-=p.decay;if(p.life<=0)return false;
+    ctx.save();ctx.globalAlpha=p.life;ctx.fillStyle=p.color;ctx.shadowBlur=8;ctx.shadowColor=p.color;
+    ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);ctx.fill();ctx.restore();return true;
+  });
+  requestAnimationFrame(animParticles);
+}
+
+// ════════════════════════════════════════
+//  INIT
+// ════════════════════════════════════════
+(function(){
+  const params=new URLSearchParams(location.search);
+  const room=params.get('room');
+  const host=location.host;
+  if(host && host!=='null' && host!=='' && !host.startsWith('localhost:0')){
+    document.getElementById('srv-host').value=host;
+  } else {
+    document.getElementById('srv-host').value='localhost:3000';
+  }
+  if(room)document.getElementById('room-id').value=room;
+  showLobby();
+})();
+</script>
+</body>
+</html>
