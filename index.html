@@ -27,7 +27,6 @@
     pointer-events:none;
   }
 
-  /* ── SECTION VISIBILITY ── */
   #waiting { display:none; }
   #game    { display:none; }
 
@@ -118,10 +117,6 @@
   }
   @keyframes boardReveal { from{opacity:0;transform:scale(.94) rotateX(8deg)} to{opacity:1;transform:scale(1) rotateX(0)} }
 
-  /* board flipped for black */
-  #board.flipped { transform:rotate(180deg); }
-  #board.flipped .sq { transform:rotate(180deg); }
-
   .sq {
     width:var(--sq); height:var(--sq);
     display:flex; align-items:center; justify-content:center;
@@ -205,14 +200,11 @@
   button:disabled{opacity:.35;cursor:default;transform:none;}
   button:disabled:hover{background:transparent;color:var(--gold);}
 
-  /* my-role badge in panel */
   .my-role-badge {
     font-family:'Cinzel',serif; font-size:.72rem; letter-spacing:.1em;
     text-align:center; padding:7px; border-radius:4px;
     border:1px solid #c9a44a44; background:#110800; color:var(--gold2);
   }
-
-  /* opponent status */
   .opp-status {
     font-size:.82rem; text-align:center; color:#c8a87a;
     padding:6px; border-radius:4px; border:1px solid #c9a44a22;
@@ -221,7 +213,6 @@
   .opp-status.online { color:#7ec87e; }
   .opp-status.offline { color:#ff7b50; }
 
-  /* chat */
   .chat-wrap { display:flex; flex-direction:column; gap:6px; }
   .chat-log {
     background:#110800; border:1px solid #c9a44a22; border-radius:4px;
@@ -245,7 +236,6 @@
   }
   .chat-send:hover{background:var(--gold);color:#1a1008;}
 
-  /* draw offer banner */
   .draw-banner {
     position:fixed; top:20px; left:50%; transform:translateX(-50%);
     background:var(--panel); border:2px solid var(--gold); border-radius:8px;
@@ -258,7 +248,6 @@
   .draw-banner-btns{display:flex;gap:10px;justify-content:center;}
   .draw-banner-btns button{width:auto;padding:8px 20px;}
 
-  /* promo */
   .promo-overlay{display:none;position:fixed;inset:0;z-index:100;align-items:center;justify-content:center;}
   .promo-overlay.show{display:flex;animation:promoFade .25s ease forwards}
   @keyframes promoFade{from{background:rgba(0,0,0,0)}to{background:rgba(0,0,0,.75)}}
@@ -270,7 +259,6 @@
   @keyframes promoPieceIn{from{transform:scale(0) rotate(-30deg);opacity:0}to{transform:scale(1) rotate(0);opacity:1}}
   .promo-piece:hover{transform:scale(1.25) translateY(-4px)}
 
-  /* mate banner */
   .mate-banner{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.7);z-index:200;animation:bannerIn .4s cubic-bezier(.22,1,.36,1) both;backdrop-filter:blur(6px);}
   @keyframes bannerIn{from{opacity:0}to{opacity:1}}
   .mate-box{background:var(--panel);border:2px solid var(--gold);border-radius:12px;padding:40px 50px;text-align:center;box-shadow:0 0 80px #c9a44a55;animation:mateBoxIn .45s cubic-bezier(.34,1.4,.64,1) .1s both;}
@@ -497,11 +485,10 @@ function handleMsg(msg){
       myRole=msg.role;
       if(myRole==='spectator'){
         setConnStatus('Вы — зритель','ok');
-        showWaiting(msg.roomId);
       } else {
         setConnStatus('Вы: '+(myRole==='white'?'Белые':'Чёрные'),'ok');
-        showWaiting(msg.roomId);
       }
+      showWaiting(msg.roomId);
       break;
     case 'room_info':
       opponentOnline=(myRole==='white'&&msg.blackConnected)||(myRole==='black'&&msg.whiteConnected)||myRole==='spectator';
@@ -591,8 +578,6 @@ function startGame(){
   document.getElementById('white-cap').dataset.count=0;
   document.getElementById('black-cap').dataset.count=0;
   prevTurn='w';
-  // flip board for black
-  document.getElementById('board').classList.toggle('flipped', myRole==='black');
   buildBoard();
   renderBoard({newGame:true});
   addChat('Система','Игра началась! Белые ходят первыми.');
@@ -612,6 +597,17 @@ function setConnStatus(msg,cls){
 }
 
 // ════════════════════════════════════════
+//  BOARD VIEW HELPERS
+//  For black: visual row = 7-r, visual col = 7-c
+// ════════════════════════════════════════
+
+// Convert logical (r,c) → visual position index used in DOM data-r/data-c
+function logicalToVisual(r, c){
+  if(myRole === 'black') return { r: 7-r, c: 7-c };
+  return { r, c };
+}
+
+// ════════════════════════════════════════
 //  RENDER
 // ════════════════════════════════════════
 let prevTurn='w';
@@ -620,24 +616,35 @@ let renderedPieces=Array.from({length:8},()=>Array(8).fill(null));
 function buildBoard(){
   const boardEl=document.getElementById('board');
   boardEl.innerHTML='';
+  // Remove any old flip class — we handle orientation via logical layout
+  boardEl.classList.remove('flipped');
   renderedPieces=Array.from({length:8},()=>Array(8).fill(null));
-  for(let r=0;r<8;r++){
-    const rowEl=document.createElement('div');rowEl.className='board-row';
-    for(let c=0;c<8;c++){
+
+  for(let vi=0;vi<8;vi++){
+    const rowEl=document.createElement('div');
+    rowEl.className='board-row';
+    for(let vj=0;vj<8;vj++){
+      // Visual index → logical index
+      const lr = myRole==='black' ? 7-vi : vi;
+      const lc = myRole==='black' ? 7-vj : vj;
+
       const sq=document.createElement('div');
-      sq.className='sq '+((r+c)%2===0?'light':'dark');
-      sq.dataset.r=r;sq.dataset.c=c;
-      sq.addEventListener('click',()=>handleClick(r,c));
+      // Square color based on logical coords (so board looks standard)
+      sq.className='sq '+((lr+lc)%2===0?'light':'dark');
+      // Store LOGICAL coords in data attributes — click handler uses these directly
+      sq.dataset.r=lr;
+      sq.dataset.c=lc;
+      sq.addEventListener('click',()=>handleClick(lr,lc));
       sq.addEventListener('mousemove',e=>{
         const rect=sq.getBoundingClientRect();
         sq.style.setProperty('--mx',((e.clientX-rect.left)/rect.width*100)+'%');
         sq.style.setProperty('--my',((e.clientY-rect.top)/rect.height*100)+'%');
       });
-      if(board[r][c]){
+      if(board[lr][lc]){
         const span=document.createElement('div');span.className='piece';
-        span.textContent=PIECES[board[r][c]];sq.appendChild(span);
-        renderedPieces[r][c]=board[r][c];
+        span.textContent=PIECES[board[lr][lc]];sq.appendChild(span);
       }
+      renderedPieces[lr][lc]=board[lr][lc];
       rowEl.appendChild(sq);
     }
     boardEl.appendChild(rowEl);
@@ -655,7 +662,6 @@ function renderBoard(opts){
       if(selected&&selected.r===r&&selected.c===c)sq.classList.add('selected');
       if(lastMove&&((lastMove.fr===r&&lastMove.fc===c)||(lastMove.r===r&&lastMove.c===c)))sq.classList.add('last-move');
       if(kcheck&&kcheck[0]===r&&kcheck[1]===c)sq.classList.add('in-check');
-      // lock squares if not my turn
       if(!canIMove())sq.classList.add('locked');
       sq.querySelectorAll('.hint-dot,.hint-ring').forEach(e=>e.remove());
       const hint=highlights.find(h=>h.r===r&&h.c===c);
@@ -692,8 +698,19 @@ function renderCoords(){
   const colEl=document.getElementById('col-coords'),rowEl=document.getElementById('row-coords');
   if(!colEl)return;
   colEl.innerHTML='';rowEl.innerHTML='';
-  for(let i=0;i<8;i++){const d=document.createElement('div');d.className='coord';d.textContent=8-i;colEl.appendChild(d);}
-  for(let i=0;i<8;i++){const d=document.createElement('div');d.className='coord';d.textContent='abcdefgh'[i];rowEl.appendChild(d);}
+  // Column labels (rank numbers) — shown top to bottom visually
+  for(let vi=0;vi<8;vi++){
+    const lr = myRole==='black' ? vi+1 : 8-vi;
+    const d=document.createElement('div');d.className='coord';d.textContent=lr;
+    colEl.appendChild(d);
+  }
+  // Row labels (file letters) — shown left to right visually
+  const files='abcdefgh';
+  for(let vj=0;vj<8;vj++){
+    const lc = myRole==='black' ? 7-vj : vj;
+    const d=document.createElement('div');d.className='coord';d.textContent=files[lc];
+    rowEl.appendChild(d);
+  }
 }
 
 function renderPanel(){
@@ -727,7 +744,6 @@ function renderPanel(){
     boardEl.classList.remove('board-shake');void boardEl.offsetWidth;boardEl.classList.add('board-shake');
     boardEl.addEventListener('animationend',()=>boardEl.classList.remove('board-shake'),{once:true});
   }else{statusEl.textContent='Игра идёт';}
-  // disable buttons if spectator or not my turn
   const resign=document.getElementById('btn-resign'),draw=document.getElementById('btn-draw');
   if(resign)resign.disabled=myRole==='spectator'||!gameActive;
   if(draw)draw.disabled=myRole==='spectator'||!gameActive;
@@ -767,11 +783,9 @@ function handleClick(r,c){
 }
 
 function applyRemoteMove(move){
-  // Apply a move received from the server
   executeMove(move.fr, move.fc, move, false);
 }
 
-// sendToNetwork: if true, broadcast move to server
 function executeMove(fr,fc,move,sendToNetwork){
   history.push({
     board:cloneBoard(board),turn,selected,highlights,
@@ -779,10 +793,12 @@ function executeMove(fr,fc,move,sendToNetwork){
     castling:cloneCast(castling),enPassant:enPassant?{...enPassant}:null,
     capturedWhite:[...capturedWhite],capturedBlack:[...capturedBlack],moveLog:[...moveLog]
   });
-  const p=board[fr][fc],col=color(p),type=pieceType(p);
+  const p=board[fr][fc];
+  let col=color(p);
+  const type=pieceType(p);
   const target=board[move.r][move.c];
   const notation=toNotation(fr,fc,move,p,target);
-  if(target)col==='w'?capturedWhite.push(target):capturedBlack.push(target);
+  if(target) col==='w'?capturedWhite.push(target):capturedBlack.push(target);
   let epCap=null;
   if(move.enPassant){const epRow=col==='w'?move.r+1:move.r-1;epCap=board[epRow][move.c];col==='w'?capturedWhite.push(epCap):capturedBlack.push(epCap);board[epRow][move.c]=null;}
   if(move.castle){const kr=col==='w'?7:0;if(move.castle==='K'){board[kr][5]=board[kr][7];board[kr][7]=null;}else{board[kr][3]=board[kr][0];board[kr][0]=null;}}
@@ -794,7 +810,17 @@ function executeMove(fr,fc,move,sendToNetwork){
   const captured=target||epCap;
   const isPromo=type==='P'&&(move.r===0||move.r===7);
 
-  // Send before animation so network gets it fast
+  // Handle remote promo: server sends promo piece type
+  if(move.promo && !sendToNetwork){
+    board[move.r][move.c]=col+move.promo;
+    moveLog.push(notation+'='+move.promo);
+    turn=turn==='w'?'b':'w';
+    selected=null;highlights=[];
+    if(captured)spawnParticles(move.r,move.c);
+    renderBoard({animSquare:{r:move.r,c:move.c}});
+    return;
+  }
+
   if(sendToNetwork){
     send({type:'move', turn:col, move:{fr,fc,r:move.r,c:move.c,castle:move.castle||null,enPassant:move.enPassant||null}});
   }
@@ -807,7 +833,6 @@ function executeMove(fr,fc,move,sendToNetwork){
     if(isPromo){
       moveLog.push(notation);turn=turn==='w'?'b':'w';
       selected=null;highlights=[];
-      // Only show promo UI to the player who owns the pawn
       if(sendToNetwork){
         showPromo(move.r,move.c,col,(chosenType)=>{
           board[move.r][move.c]=col+chosenType;
@@ -817,8 +842,6 @@ function executeMove(fr,fc,move,sendToNetwork){
           renderBoard({animSquare:{r:move.r,c:move.c}});
         });
       }
-      // remote promo: piece already set by server relay — handled in applyRemoteMove flow
-      // For simplicity we do auto-queen for remote promo if no UI callback
       return;
     }
     moveLog.push(notation);turn=turn==='w'?'b':'w';
@@ -891,7 +914,7 @@ function handleResign(role){
   endGame(who+' сдались.');
 }
 function handleDrawOffer(fromRole){
-  if(fromRole===myRole)return; // don't show own offer back
+  if(fromRole===myRole)return;
   if(myRole==='spectator'){addChat('Система','Предложена ничья.');return;}
   const banner=document.createElement('div');banner.className='draw-banner';banner.id='draw-banner';
   banner.innerHTML=`<p>Соперник предлагает ничью</p><div class="draw-banner-btns"><button onclick="acceptDraw()">Принять</button><button onclick="declineDraw()">Отклонить</button></div>`;
@@ -964,12 +987,12 @@ function animParticles(){
 }
 
 // ════════════════════════════════════════
-//  INIT — detect server from URL params
+//  INIT
 // ════════════════════════════════════════
 (function(){
   const params=new URLSearchParams(location.search);
   const room=params.get('room');
-  const host=location.host; // when served from server, host is the server
+  const host=location.host;
   if(host && !host.startsWith('null') && !host.includes('localhost:0')){
     document.getElementById('srv-host').value=host;
   }
